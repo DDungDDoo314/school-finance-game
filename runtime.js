@@ -3,20 +3,8 @@
   const runtime=window.FinanceRuntime={lost:false};
   function boot(){
     const canvas=document.getElementById('canvas');if(!canvas)return;
-    let height=window.innerHeight,width=window.innerWidth,queued=0;
-    function resize(){
-      queued=0;
-      const typing=document.activeElement?.classList?.contains('finance-native-input');
-      const newWidth=window.innerWidth;
-      if(!typing||Math.abs(newWidth-width)>80){width=newWidth;height=window.innerHeight;}
-      canvas.style.width=width+'px';canvas.style.height=height+'px';
-      const factor=Math.min(1,1920/Math.max(1,width),1920/Math.max(1,height));
-      const w=Math.round(width*factor),h=Math.round(height*factor);
-      if(canvas.width!==w)canvas.width=w;
-      if(canvas.height!==h)canvas.height=h;
-    }
-    window.addEventListener('resize',()=>{if(!queued)queued=requestAnimationFrame(resize);});
-    resize();
+    // Godot alone owns canvas sizing and device-pixel-ratio handling.
+    // A second canvas.width/height writer desynchronizes drawing and hit testing.
     let panel=null;
     canvas.addEventListener('webglcontextlost',e=>{
       e.preventDefault();runtime.lost=true;
