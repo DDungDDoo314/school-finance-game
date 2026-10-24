@@ -1,47 +1,47 @@
 (() => {
   if(window.FinanceRuntime)return;
-  const runtime=window.FinanceRuntime={lost:false,portraitBlocked:false};
+  const runtime=window.FinanceRuntime={lost:false};
   function boot(){
     const canvas=document.getElementById('canvas');if(!canvas)return;
-    // Godot alone owns canvas sizing and device-pixel-ratio handling.
-    // A second canvas.width/height writer desynchronizes drawing and hit testing.
-    // Mobile browsers may refuse OS orientation locks (especially iOS Safari).
-    // Keep the game portrait-only with an accessible guard, without rotating or resizing the canvas ourselves.
-    const orientationStyle=document.createElement('style');
-    orientationStyle.textContent='html.finance-landscape #canvas{visibility:hidden!important}html.finance-landscape .finance-native-input{visibility:hidden!important}';
-    document.head?.appendChild(orientationStyle);
-    const portrait=document.createElement('div');
-    portrait.setAttribute('role','status');
-    portrait.textContent='세로 화면으로 돌려 주세요.';
-    Object.assign(portrait.style,{position:'fixed',inset:'0',zIndex:'19000',display:'none',placeContent:'center',background:'#f3f8fd',color:'#1764e8',font:'500 18px system-ui',textAlign:'center',padding:'24px'});
-    document.body.append(portrait);
-    let orientationFrame=0;
-    function orientation(){
-      const mobile=window.matchMedia?.('(pointer: coarse)').matches;
-      // Screen geometry, rather than keyboard-shortened innerHeight, determines orientation.
-      const angle=window.screen?.orientation?.angle;
-      const legacyAngle=window.orientation;
-      const sideways=typeof angle==='number'?Math.abs(angle)%180===90:typeof legacyAngle==='number'?Math.abs(legacyAngle)%180===90:window.screen?.width>window.screen?.height;
-      const wasBlocked=runtime.portraitBlocked;
-      // Orientation events can precede the viewport resize. Keep the guard up until
-      // portrait geometry arrives, rather than resuming with stale landscape sizes.
-      const viewportPortrait=window.innerWidth<=window.innerHeight;
-      const framebufferReady=!(canvas.width>0&&canvas.height>0)||Math.abs(canvas.width/canvas.height-window.innerWidth/window.innerHeight)<0.015;
-      const unsettled=wasBlocked&&!sideways&&(!viewportPortrait||!framebufferReady);
-      if(unsettled&&!orientationFrame)orientationFrame=requestAnimationFrame(()=>{orientationFrame=0;orientation();});
-      runtime.portraitBlocked=!!(mobile&&(sideways||unsettled));
-      document.documentElement?.classList.toggle('finance-landscape',runtime.portraitBlocked);
-      portrait.style.display=runtime.portraitBlocked?'grid':'none';
-      if(runtime.portraitBlocked&&document.activeElement?.classList?.contains('finance-native-input'))document.activeElement.blur();
-      if(wasBlocked&&!runtime.portraitBlocked)window.dispatchEvent?.(new Event('finance-resume'));
+    // A single portrait canvas, not a second landscape layout. The engine alone
+    // owns framebuffer pixels; CSS only places the portrait frame on the page.
+    const frameStyle=document.createElement('style');
+    frameStyle.textContent='html{--finance-safe-top:env(safe-area-inset-top,0px);--finance-safe-bottom:env(safe-area-inset-bottom,0px)}html,body{margin:0;overflow:hidden;background:#f3f8fd}html.finance-dark,html.finance-dark body{background:#0d1728}#canvas{position:absolute;top:var(--finance-frame-top,0px);left:50%;transform:translateX(-50%);width:var(--finance-frame-width,440px)!important;height:var(--finance-frame-height,820px)!important}';
+    document.head?.appendChild(frameStyle);
+    let lastPortrait=null,insets={top:0,bottom:0};
+    function readInsets(){
+      const style=window.getComputedStyle?.(document.documentElement);
+      insets={top:parseFloat(style?.getPropertyValue('--finance-safe-top'))||0,bottom:parseFloat(style?.getPropertyValue('--finance-safe-bottom'))||0};
     }
-    window.addEventListener('orientationchange',orientation);
-    window.addEventListener('resize',orientation);
-    window.screen?.orientation?.addEventListener('change',orientation);
+    readInsets();
+    runtime.portraitSize=()=>{
+      const w=Math.round(window.innerWidth||440),h=Math.round(window.innerHeight||820);
+      const mobile=!!window.matchMedia?.('(pointer: coarse)').matches;
+      const active=document.activeElement?.classList?.contains('finance-native-input');
+      let width,height,top=0;
+      if(mobile){
+        if(w<=h||(active&&lastPortrait?.width===w)){width=w;top=insets.top;height=active&&lastPortrait&&lastPortrait.width===w?Math.max(h-top-insets.bottom,lastPortrait.height):Math.max(160,h-top-insets.bottom);}
+        else if(lastPortrait){width=lastPortrait.width;height=lastPortrait.height;top=runtime.frameTop||0;}
+        else{width=Math.min(w,h);height=Math.max(w,h);}
+      }else{width=Math.min(w,480);height=Math.max(h,640);}
+      const topChanged=runtime.frameTop!==top;
+      runtime.frameTop=top;
+      const frame={width,height};
+      if(!lastPortrait||lastPortrait.width!==width||lastPortrait.height!==height||topChanged){
+        lastPortrait=frame;
+        document.documentElement?.style?.setProperty('--finance-frame-top',top+'px');
+        document.documentElement?.style?.setProperty('--finance-frame-width',width+'px');
+        document.documentElement?.style?.setProperty('--finance-frame-height',height+'px');
+      }
+      return frame;
+    };
+    window.addEventListener('resize',()=>{readInsets();runtime.portraitSize();window.dispatchEvent?.(new Event('finance-resume'));});
+    window.addEventListener('orientationchange',()=>{runtime.portraitSize();});
+    runtime.portraitSize();
     // Try the real lock only where supported; rejection is expected in ordinary browser tabs.
-    function tryLock(){window.screen?.orientation?.lock?.('portrait').catch(()=>{});}
+    function tryLock(){try{window.screen?.orientation?.lock?.('portrait').catch(()=>{});}catch{}}
     document.addEventListener?.('pointerdown',tryLock,{once:true});
-    orientation();
+    document.addEventListener?.('fullscreenchange',()=>{if(document.fullscreenElement)tryLock();});
     let panel=null;
     canvas.addEventListener('webglcontextlost',e=>{
       e.preventDefault();runtime.lost=true;
