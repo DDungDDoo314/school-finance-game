@@ -1,10 +1,39 @@
 (() => {
   if(window.FinanceRuntime)return;
-  const runtime=window.FinanceRuntime={lost:false};
+  const runtime=window.FinanceRuntime={lost:false,portraitBlocked:false};
   function boot(){
     const canvas=document.getElementById('canvas');if(!canvas)return;
     // Godot alone owns canvas sizing and device-pixel-ratio handling.
     // A second canvas.width/height writer desynchronizes drawing and hit testing.
+    // Mobile browsers may refuse OS orientation locks (especially iOS Safari).
+    // Keep the game portrait-only with an accessible guard, without rotating or resizing the canvas ourselves.
+    const orientationStyle=document.createElement('style');
+    orientationStyle.textContent='html.finance-landscape #canvas{visibility:hidden!important}html.finance-landscape .finance-native-input{visibility:hidden!important}';
+    document.head?.appendChild(orientationStyle);
+    const portrait=document.createElement('div');
+    portrait.setAttribute('role','status');
+    portrait.textContent='세로 화면으로 돌려 주세요.';
+    Object.assign(portrait.style,{position:'fixed',inset:'0',zIndex:'19000',display:'none',placeContent:'center',background:'#f3f8fd',color:'#1764e8',font:'500 18px system-ui',textAlign:'center',padding:'24px'});
+    document.body.append(portrait);
+    function orientation(){
+      const mobile=window.matchMedia?.('(pointer: coarse)').matches;
+      // Screen geometry, rather than keyboard-shortened innerHeight, determines orientation.
+      const angle=window.screen?.orientation?.angle;
+      const legacyAngle=window.orientation;
+      const sideways=typeof angle==='number'?Math.abs(angle)%180===90:typeof legacyAngle==='number'?Math.abs(legacyAngle)%180===90:window.screen?.width>window.screen?.height;
+      runtime.portraitBlocked=!!(mobile&&sideways);
+      document.documentElement?.classList.toggle('finance-landscape',runtime.portraitBlocked);
+      portrait.style.display=runtime.portraitBlocked?'grid':'none';
+      if(runtime.portraitBlocked&&document.activeElement?.classList?.contains('finance-native-input'))document.activeElement.blur();
+      if(!runtime.portraitBlocked)window.dispatchEvent?.(new Event('finance-resume'));
+    }
+    window.addEventListener('orientationchange',orientation);
+    window.addEventListener('resize',orientation);
+    window.screen?.orientation?.addEventListener('change',orientation);
+    // Try the real lock only where supported; rejection is expected in ordinary browser tabs.
+    function tryLock(){window.screen?.orientation?.lock?.('portrait').catch(()=>{});}
+    document.addEventListener?.('pointerdown',tryLock,{once:true});
+    orientation();
     let panel=null;
     canvas.addEventListener('webglcontextlost',e=>{
       e.preventDefault();runtime.lost=true;
