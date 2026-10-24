@@ -15,17 +15,25 @@
     portrait.textContent='세로 화면으로 돌려 주세요.';
     Object.assign(portrait.style,{position:'fixed',inset:'0',zIndex:'19000',display:'none',placeContent:'center',background:'#f3f8fd',color:'#1764e8',font:'500 18px system-ui',textAlign:'center',padding:'24px'});
     document.body.append(portrait);
+    let orientationFrame=0;
     function orientation(){
       const mobile=window.matchMedia?.('(pointer: coarse)').matches;
       // Screen geometry, rather than keyboard-shortened innerHeight, determines orientation.
       const angle=window.screen?.orientation?.angle;
       const legacyAngle=window.orientation;
       const sideways=typeof angle==='number'?Math.abs(angle)%180===90:typeof legacyAngle==='number'?Math.abs(legacyAngle)%180===90:window.screen?.width>window.screen?.height;
-      runtime.portraitBlocked=!!(mobile&&sideways);
+      const wasBlocked=runtime.portraitBlocked;
+      // Orientation events can precede the viewport resize. Keep the guard up until
+      // portrait geometry arrives, rather than resuming with stale landscape sizes.
+      const viewportPortrait=window.innerWidth<=window.innerHeight;
+      const framebufferReady=!(canvas.width>0&&canvas.height>0)||Math.abs(canvas.width/canvas.height-window.innerWidth/window.innerHeight)<0.015;
+      const unsettled=wasBlocked&&!sideways&&(!viewportPortrait||!framebufferReady);
+      if(unsettled&&!orientationFrame)orientationFrame=requestAnimationFrame(()=>{orientationFrame=0;orientation();});
+      runtime.portraitBlocked=!!(mobile&&(sideways||unsettled));
       document.documentElement?.classList.toggle('finance-landscape',runtime.portraitBlocked);
       portrait.style.display=runtime.portraitBlocked?'grid':'none';
       if(runtime.portraitBlocked&&document.activeElement?.classList?.contains('finance-native-input'))document.activeElement.blur();
-      if(!runtime.portraitBlocked)window.dispatchEvent?.(new Event('finance-resume'));
+      if(wasBlocked&&!runtime.portraitBlocked)window.dispatchEvent?.(new Event('finance-resume'));
     }
     window.addEventListener('orientationchange',orientation);
     window.addEventListener('resize',orientation);
